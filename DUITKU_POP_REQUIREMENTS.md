@@ -16,7 +16,7 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 | 2 | HTTP Callback | LOCKED |
 | 3 | JS Callback dan Return URL | LOCKED |
 | 4 | Expiry dan status transaksi | LOCKED (open clarification) |
-| 5 | Payment Method dan fitur khusus | PENDING |
+| 5 | Payment Method dan fitur khusus | LOCKED (availability merchant perlu konfirmasi) |
 | 6 | Errors dan rekonsiliasi | PENDING |
 
 ---
@@ -434,7 +434,131 @@ Requirement:
 
 ---
 
-## 5. Sumber tahap 1
+
+
+## 5. Payment Method dan Fitur Khusus — LOCKED (availability merchant perlu konfirmasi)
+
+### 5.1 Cara memilih metode pembayaran
+
+Dokumentasi POP menyatakan parameter `paymentMethod` pada Create Invoice bersifat opsional. Jika diisi dengan kode metode pembayaran tertentu, pelanggan akan diarahkan langsung ke metode tersebut tanpa memilih metode lain pada halaman pembayaran.
+
+Requirement:
+- Jika `paymentMethod` tidak dikirim, jangan mengasumsikan perilaku channel tertentu di luar konfigurasi merchant.
+- Jika `paymentMethod` dikirim, gunakan hanya kode yang tercantum pada dokumentasi POP dan telah dikonfirmasi aktif untuk merchant.
+- Daftar channel pada dokumentasi bukan bukti bahwa seluruh channel aktif pada akun merchant Asri.
+- Jangan hardcode seluruh channel sebagai tersedia di UI sebelum status aktivasi merchant diverifikasi.
+
+### 5.2 Daftar payment method dan kode yang tercantum
+
+Daftar berikut disalin sebagai referensi kode dari halaman Payment Method POP yang diperiksa. Aktivasi, biaya, limit, dan ketersediaan aktual tetap harus dikonfirmasi pada merchant portal/akun Duitku.
+
+| Kategori | Kode | Metode |
+|---|---|---|
+| Credit Card | `VC` | Visa / MasterCard / JCB |
+| Virtual Account | `BC` | BCA Virtual Account |
+| Virtual Account | `M2` | Mandiri Virtual Account |
+| Virtual Account | `VA` | Maybank Virtual Account |
+| Virtual Account | `I1` | BNI Virtual Account |
+| Virtual Account | `B1` | CIMB Niaga Virtual Account |
+| Virtual Account | `BT` | Permata Bank Virtual Account |
+| Virtual Account | `A1` | ATM Bersama |
+| Virtual Account | `AG` | Bank Artha Graha |
+| Virtual Account | `NC` | Bank Neo Commerce / BNC |
+| Virtual Account | `BR` | BRIVA |
+| Virtual Account | `S1` | Bank Sahabat Sampoerna |
+| Virtual Account | `DM` | Danamon Virtual Account |
+| Virtual Account | `BV` | BSI Virtual Account |
+| Retail | `FT` | Pegadaian / ALFA / Pos |
+| Retail | `IR` | Indomaret |
+| E-Wallet | `OV` | OVO (support void) |
+| E-Wallet | `SA` | ShopeePay Apps (support void) |
+| E-Wallet | `LF` | LinkAja Apps (fixed fee) |
+| E-Wallet | `LA` | LinkAja Apps (percentage fee) |
+| E-Wallet | `DA` | DANA |
+| E-Wallet | `SL` | ShopeePay Account Link |
+| E-Wallet | `OL` | OVO Account Link |
+| QRIS | `SP` | ShopeePay |
+| QRIS | `NQ` | Nobu |
+| QRIS | `GQ` | Gudang Voucher |
+| QRIS | `SQ` | Nusapay |
+| Credit / Paylater | `DN` | Indodana Paylater |
+| Credit / Paylater | `AT` | ATOME |
+| E-Banking | `JP` | Jenius Pay |
+| E-Commerce | `T1` | Tokopedia Card Payment |
+| E-Commerce | `T2` | Tokopedia E-Wallet |
+| E-Commerce | `T3` | Tokopedia Others |
+
+### 5.3 Parameter wajib berdasarkan kategori
+
+Dokumentasi memberikan persyaratan tambahan berikut:
+
+| Kategori | Parameter tambahan yang diwajibkan |
+|---|---|
+| Credit / Paylater (`DN`, `AT`) | `customerDetail` dan `itemDetails` |
+| E-Commerce (`T1`, `T2`, `T3`) | `customerVaName` |
+
+Ketentuan:
+- Validasi parameter khusus kategori sebelum mengirim Create Invoice.
+- Jangan menganggap field opsional secara umum tetap opsional ketika metode pembayaran mengaktifkan aturan khusus.
+- Untuk Credit / Paylater, detail customer dan item harus dibentuk dari data backend yang tervalidasi.
+- Untuk E-Commerce, `customerVaName` harus tersedia dan memenuhi batas panjang parameter Create Invoice.
+
+### 5.4 Payment method dengan fitur khusus
+
+Dari deskripsi daftar POP:
+- `OV` OVO: support void.
+- `SA` ShopeePay Apps: support void.
+- `LF` LinkAja Apps: fixed fee.
+- `LA` LinkAja Apps: percentage fee.
+- `SL` ShopeePay Account Link.
+- `OL` OVO Account Link.
+
+Requirement:
+- Jangan menganggap fitur void, fee, account link, atau settlement behavior telah diimplementasikan hanya karena channel terdaftar.
+- Proses void/refund, perhitungan fee, dan status khusus memerlukan audit dokumentasi terkait serta konfirmasi fitur merchant sebelum implementasi.
+- Jangan mengasumsikan kode payment method yang serupa memiliki perilaku identik.
+
+### 5.5 QRIS issuer list
+
+Dokumentasi POP menyediakan daftar issuer QRIS terpisah, dengan kode issuer dan nama issuer. Callback dapat mengirimkan `issuerCode`; field ini merupakan informasi issuer, bukan pengganti payment method code atau bukti pembayaran.
+
+Requirement:
+- Simpan `issuerCode` jika diterima dan diperlukan untuk pelacakan/analitik.
+- Jangan hardcode daftar issuer sebagai daftar metode pembayaran.
+- Jika UI atau bisnis membutuhkan nama issuer, cocokkan kode dengan daftar issuer resmi yang diperiksa saat implementasi.
+- Daftar issuer dapat berubah; periksa ulang dokumentasi sebelum memperbarui katalog.
+- `customerName` pada callback hanya berlaku untuk Nobu QRIS (`NQ`) dan Nusapay QRIS (`SQ`) menurut dokumentasi.
+
+### 5.6 Uji coba Sandbox per metode
+
+Dokumentasi menyediakan bagian uji coba terpisah untuk:
+- Kartu kredit 3-D Secure.
+- Virtual Account demo.
+- ShopeePay staging app untuk E-Money dan Shopee QRIS.
+- Gudang Voucher QRIS melalui demo VA.
+- Nusapay QRIS staging app.
+- Indodana dan ATOME Paylater.
+- Jenius Pay.
+- Tokopedia E-Commerce.
+
+Requirement:
+- Gunakan hanya fasilitas dan kredensial uji Sandbox yang dipublikasikan Duitku untuk metode terkait.
+- Jangan menjalankan transaksi riil untuk membuktikan channel.
+- Jangan menyalin kredensial uji ke source code, dokumentasi publik proyek, atau log.
+- Pengujian suatu metode tidak membuktikan semua metode aktif atau berfungsi pada merchant.
+- Catat hasil aktual per channel, environment, tanggal, dan bukti hasil.
+
+### 5.7 Batasan dan hal yang belum diverifikasi
+
+1. Ketersediaan setiap channel pada merchant Asri belum diverifikasi.
+2. Tarif, biaya tetap/persentase, limit transaksi, settlement time, dan eligibility merchant tidak dirinci lengkap pada tabel Payment Method POP; jangan mengarang nilai.
+3. Detail operasional void untuk channel yang menyatakan support void belum diaudit pada tahap ini.
+4. Daftar QRIS issuer merupakan daftar terpisah dan dapat berkembang; tidak otomatis menyatakan semua issuer/channel aktif bagi merchant.
+5. Kode channel yang tercantum adalah katalog dokumentasi saat diperiksa, bukan kontrak bahwa channel pasti tersedia pada production account.
+
+---
+
+## 6. Sumber tahap 1
 
 Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/id/), bagian:
 - Integrasi Backend atau Server → Create Invoice
@@ -449,7 +573,7 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 6. Change control
+## 7. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
