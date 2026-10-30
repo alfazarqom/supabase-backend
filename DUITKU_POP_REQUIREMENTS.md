@@ -17,7 +17,7 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 | 3 | JS Callback dan Return URL | LOCKED |
 | 4 | Expiry dan status transaksi | LOCKED (open clarification) |
 | 5 | Payment Method dan fitur khusus | LOCKED (availability merchant perlu konfirmasi) |
-| 6 | Errors dan rekonsiliasi | PENDING |
+| 6 | Errors dan rekonsiliasi | LOCKED (inquiry belum terverifikasi) |
 
 ---
 
@@ -558,7 +558,115 @@ Requirement:
 
 ---
 
-## 6. Sumber tahap 1
+
+
+## 6. Errors dan Rekonsiliasi — LOCKED (inquiry belum terverifikasi)
+
+### 6.1 HTTP response errors
+
+Dokumentasi POP mencantumkan respons HTTP berikut:
+
+| HTTP code | Error | Arti menurut dokumentasi | Requirement backend |
+|---:|---|---|---|
+| 400 | Bad Request | Kesalahan saat mengirim request API | Periksa payload, tipe, parameter wajib, dan format |
+| 400 | Amount is different please try again later | Request ulang untuk order ID sama dengan nominal berbeda | Jangan membuat retry paralel atau mengganti nominal pada order ID yang sama |
+| 400 | SaveCardToken is not available | Akun belum mendukung fitur tokenisasi | Jangan retry seolah-olah masalah jaringan; fitur perlu aktivasi/konfirmasi merchant |
+| 401 | Unauthorized | Akses ditolak | Periksa merchant code, API Key, signature, timestamp, dan environment tanpa membocorkan secret |
+| 404 | Not Found | API/halaman tidak ditemukan | Verifikasi endpoint, method, dan environment dari dokumentasi |
+| 409 | The transaction is still in progress | Request dengan order ID sama masih diproses | Perlakukan sebagai transaksi/invoice yang sedang berjalan; jangan membuat order ID baru secara otomatis |
+| 500 | Internal Server Error | Kesalahan proses pada sisi API | Tangani sebagai kegagalan provider sementara/unknown; jangan menyatakan invoice berhasil |
+
+Backend harus memisahkan:
+- HTTP transport status.
+- API/business response body.
+- Status transaksi pembayaran yang hanya ditetapkan dari mekanisme konfirmasi yang sah.
+
+HTTP 200 saja tidak membuktikan invoice sukses. Untuk Create Invoice, periksa response body termasuk `statusCode`, `statusMessage`, `reference`, dan `paymentUrl` sesuai kontrak tahap 1.
+
+### 6.2 API response result codes
+
+Bagian Errors → API Response pada dokumentasi POP menyebut:
+
+**Callback**
+| Kode | Nama | Arti |
+|---|---|---|
+| `00` | Success | Transaksi sukses terbayarkan |
+| `02` | Failed | Transaksi gagal terbayarkan |
+
+**Redirect**
+| Kode | Nama | Arti |
+|---|---|---|
+| `00` | Success | Transaksi terbayar |
+| `01` | Process | Transaksi belum terbayar |
+| `02` | Canceled/Failed | Transaksi dibatalkan atau tidak terbayar |
+
+Konflik callback dengan tabel Parameter:
+- Tabel Parameter Callback sebelumnya menyebut `01 = Failed`.
+- Bagian Errors → API Response → Callback menyebut `02 = Failed`.
+- Konflik ini tetap open clarification. Requirement implementasi tidak boleh menetapkan `01` atau `02` sebagai kode gagal final sebelum konfirmasi Duitku atau pengujian Sandbox yang dapat diverifikasi.
+- Kode Redirect tidak boleh digunakan untuk menyelesaikan konflik callback karena redirect tidak otoritatif untuk mutasi status.
+
+### 6.3 Rekonsiliasi dan status inquiry
+
+Dalam dokumentasi POP yang diperiksa pada bagian backend, Create Invoice dan Callback tersedia sebagai mekanisme utama yang dijelaskan. Bagian yang diperiksa tidak memberikan kontrak endpoint inquiry/status-check yang dapat digunakan untuk rekonsiliasi.
+
+Requirement:
+1. Jangan mengarang URL inquiry, HTTP method, parameter, signature, atau response.
+2. Jangan menganggap fitur inquiry dari produk/API Duitku lain otomatis berlaku pada POP.
+3. Jika perlu rekonsiliasi, gunakan bukti yang tersedia melalui callback resend pada dashboard Duitku dan pencocokan catatan transaksi merchant, atau minta konfirmasi mekanisme resmi yang berlaku untuk POP.
+4. Status lokal tidak boleh diubah hanya karena timeout, error HTTP, browser redirect, atau ketiadaan callback.
+5. Tandai status transaksi yang tidak dapat dipastikan sebagai perlu pemeriksaan/reconciliation, bukan sukses.
+6. Simpan jejak transaksi dan callback yang cukup untuk investigasi tanpa menyimpan secret atau data sensitif yang tidak diperlukan.
+
+### 6.4 Callback resend dan pemulihan
+
+Dokumentasi Callback menyatakan:
+- Duitku mengirim ulang callback bila belum menerima HTTP 200.
+- Pengiriman ulang dilakukan hingga maksimum lima kali.
+- Jika maksimum tercapai, merchant menerima pemberitahuan melalui email.
+- Merchant dapat menggunakan fitur resend callback pada menu Report dashboard Duitku.
+
+Requirement backend:
+- Handler callback harus idempotent agar resend tidak menggandakan perubahan.
+- Simpan outcome pemrosesan callback secara aman.
+- Jika pemrosesan lokal gagal, jangan mengakui callback sebagai selesai tanpa mekanisme durable recovery yang telah dirancang.
+- Prosedur operator untuk callback resend harus mencocokkan order, amount, reference, dan signature sebelum status diproses ulang.
+
+### 6.5 Sandbox test resources yang didokumentasikan
+
+Dokumentasi POP menyediakan resource uji coba per kategori:
+- Kartu kredit 3-D Secure dengan kartu dummy.
+- Demo transaksi Virtual Account.
+- Shopee staging app untuk ShopeePay.
+- Demo transaksi Gudang Voucher.
+- Nusapay staging app dan data uji.
+- Data uji Indodana dan ATOME.
+- Portal uji Jenius Pay.
+- Demo transaksi Tokopedia.
+
+Requirement:
+- Gunakan hanya pada Sandbox dan sesuai instruksi dokumentasi yang berlaku.
+- Jangan gunakan kredensial atau nomor uji sebagai data produksi.
+- Jangan menganggap daftar data uji menjamin merchant telah mengaktifkan channel terkait.
+- Pengujian nyata harus mencatat environment, channel, tanggal, hasil, dan bukti.
+- Tidak ada transaksi Sandbox/Production yang dijalankan dalam audit dokumentasi ini.
+
+### 6.6 Status akhir bagian errors/reconciliation
+
+| Area | Status |
+|---|---|
+| Daftar HTTP error | Tercatat |
+| Pemisahan HTTP error dan business result | Dikunci |
+| Callback result code conflict | Open clarification |
+| Redirect result code | Tercatat, non-authoritative |
+| Callback resend maksimum lima kali | Tercatat |
+| Dashboard callback resend | Tercatat |
+| POP inquiry/status endpoint | Belum terverifikasi |
+| Sandbox transaction test | Belum dijalankan |
+
+---
+
+## 7. Sumber tahap 1
 
 Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/id/), bagian:
 - Integrasi Backend atau Server → Create Invoice
@@ -573,7 +681,7 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 7. Change control
+## 8. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
