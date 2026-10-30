@@ -13,7 +13,7 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 | Tahap | Bagian dokumentasi | Status |
 |---:|---|---|
 | 1 | Create Invoice dan Obyek JSON | LOCKED |
-| 2 | HTTP Callback | PENDING |
+| 2 | HTTP Callback | LOCKED |
 | 3 | JS Callback dan Return URL | PENDING |
 | 4 | Expiry dan status transaksi | PENDING |
 | 5 | Payment Method dan fitur khusus | PENDING |
@@ -170,7 +170,123 @@ Jika `additionalParam` digunakan, nilai/parameter yang dikirim harus URL-encoded
 
 ---
 
-## 2. Sumber tahap 1
+
+
+## 2. HTTP Callback — LOCKED
+
+### 2.1 Callback endpoint requirements
+
+| Ketentuan | Requirement |
+|---|---|
+| HTTP method | `POST` |
+| Content-Type | `application/x-www-form-urlencoded` |
+| Callback URL | Harus dapat diakses secara publik oleh server Duitku |
+| Port | 80 atau 443 |
+| Response | HTTP 200 OK setelah callback berhasil ditangani |
+
+Callback URL harus diarahkan ke backend server-side, bukan halaman frontend/browser.
+
+### 2.2 Callback signature
+
+Formula callback POP:
+
+```text
+stringToSign = merchantCode + amount + merchantOrderId
+signature = HMAC_SHA256(stringToSign, apiKey)
+```
+
+Ketentuan:
+- Formula callback berbeda dari formula Create Invoice.
+- Gunakan API Key/Merchant Key yang sesuai dengan environment merchant.
+- Signature wajib diverifikasi sebelum status transaksi diproses.
+- Metode signature MD5 lama dinyatakan obsolete oleh dokumentasi.
+- Jangan menggunakan formula signature dari dokumentasi Duitku API umum atau produk lain.
+
+### 2.3 Parameter callback
+
+Parameter inti yang digunakan untuk validasi dan pencocokan transaksi:
+
+| Parameter | Fungsi | Ketentuan backend |
+|---|---|---|
+| `merchantCode` | Kode merchant | Cocokkan dengan merchant yang dikonfigurasi |
+| `amount` | Nominal pembayaran | Cocokkan dengan nominal transaksi tersimpan |
+| `merchantOrderId` | ID transaksi merchant | Harus menunjuk ke transaksi yang dikenal |
+| `resultCode` | Hasil pembayaran | `00` = Success; `01` = Failed |
+| `reference` | Referensi Duitku | Cocokkan dengan reference invoice yang tersimpan |
+| `signature` | Bukti integritas/autentikasi callback | Verifikasi dengan formula resmi |
+
+Parameter lain yang didokumentasikan dapat mencakup:
+- `productDetail`
+- `additionalParam`
+- `paymentCode`
+- `merchantUserId`
+- `publisherOrderId`
+- `spUserHash`
+- `settlementDate`
+- `issuerCode`
+- `customerName`
+- `bankAppCode`
+- `bankOrderId`
+- `bankRespCode`
+- `bankRespMsg`
+- `cardName`
+- `cardType`
+- `maskedNumber`
+- `tokenId`
+- `transactionState`
+- `transactionStateStatus`
+- `merchantCustomerId`
+- `expiryDate`
+
+Parameter tambahan bersifat relevan sesuai metode pembayaran dan fitur yang digunakan. Jangan mewajibkan semua parameter opsional untuk setiap callback.
+
+### 2.4 Callback processing requirements
+
+Backend wajib:
+1. Menerima callback dengan parser yang sesuai untuk `application/x-www-form-urlencoded`.
+2. Menolak parameter inti yang hilang atau format yang tidak valid.
+3. Memverifikasi callback signature menggunakan API Key server-side.
+4. Memastikan `merchantCode` sesuai konfigurasi merchant.
+5. Mencari transaksi berdasarkan `merchantOrderId` yang dikenal.
+6. Memastikan `amount` sama dengan nominal transaksi yang tersimpan.
+7. Memastikan `reference` cocok dengan reference invoice yang sebelumnya disimpan.
+8. Memvalidasi `resultCode` dan legalitas transisi status berdasarkan state transaksi yang ada.
+9. Memproses callback secara idempotent agar callback berulang tidak menggandakan perubahan status, stok, atau fulfillment.
+10. Menyimpan hasil pemrosesan secara aman agar callback yang gagal ditangani dapat ditelusuri dan dipulihkan.
+
+Signature yang valid saja tidak cukup untuk mengubah sembarang transaksi. Pemetaan order, amount, reference, environment, dan transisi status tetap harus diperiksa.
+
+### 2.5 HTTP response, retry, dan recovery
+
+Dokumentasi menyatakan:
+- Callback endpoint perlu mengembalikan HTTP 200 OK.
+- Duitku mengirim ulang callback jika server merchant belum memberikan HTTP 200.
+- Pengiriman ulang dilakukan sampai maksimum lima kali.
+- Setelah upaya maksimum, Duitku mengirim pemberitahuan callback gagal melalui email.
+- Merchant dapat mengirim ulang callback melalui fitur resend pada menu Report di dashboard Duitku.
+
+Requirement backend:
+- Jangan mengirim HTTP 200 setelah callback gagal diproses dan event dibuang.
+- Pastikan pemrosesan lokal tahan terhadap callback duplikat karena provider dapat melakukan retry.
+- Jika database/RPC gagal, pertahankan kemampuan retry/recovery dan jangan menandai event sebagai berhasil diproses.
+- Jangan mengasumsikan interval retry karena intervalnya tidak ditetapkan dalam bagian dokumentasi yang diperiksa.
+
+### 2.6 IP allowlist
+
+Dokumentasi menyediakan daftar outgoing IP terpisah untuk Production dan Sandbox, serta menyebut port 80/443 dan URL publik.
+
+IP allowlist dapat dipertimbangkan sebagai defense-in-depth jika sesuai dengan infrastruktur. IP allowlist tidak menggantikan verifikasi HMAC signature dan pencocokan transaksi. Daftar IP harus diperiksa ulang pada dokumentasi resmi saat konfigurasi jaringan dilakukan; jangan mengandalkan daftar yang disalin permanen tanpa verifikasi terbaru.
+
+### 2.7 Inkonsistensi/hal yang perlu diperhatikan
+
+1. Tabel parameter callback menulis `productDetail` (singular), sedangkan contoh cURL pada halaman menggunakan `productDetails` (plural). Jangan menjadikan field ini sebagai syarat inti callback sebelum format aktual dikonfirmasi.
+2. Contoh kode menggunakan variabel `$apiKey`, sedangkan deskripsi formula menyebut `merchantKey`. Requirement menganggap keduanya merujuk pada credential API Key/Merchant Key milik proyek Duitku; nama secret internal harus konsisten dan tidak mengubah formula.
+3. Formula signature tidak memasukkan `reference` ke string yang ditandatangani. Karena itu backend tetap harus mencocokkan reference terhadap data invoice tersimpan secara independen.
+4. Dokumentasi menyebut maksimum lima kali pengiriman ulang, tetapi tidak menetapkan interval retry pada bagian yang diperiksa.
+
+---
+
+## 3. Sumber tahap 1
 
 Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/id/), bagian:
 - Integrasi Backend atau Server → Create Invoice
@@ -185,7 +301,7 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 3. Change control
+## 4. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
