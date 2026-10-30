@@ -15,7 +15,7 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 | 1 | Create Invoice dan Obyek JSON | LOCKED |
 | 2 | HTTP Callback | LOCKED |
 | 3 | JS Callback dan Return URL | LOCKED |
-| 4 | Expiry dan status transaksi | PENDING |
+| 4 | Expiry dan status transaksi | LOCKED (open clarification) |
 | 5 | Payment Method dan fitur khusus | PENDING |
 | 6 | Errors dan rekonsiliasi | PENDING |
 
@@ -282,7 +282,7 @@ IP allowlist dapat dipertimbangkan sebagai defense-in-depth jika sesuai dengan i
 1. Tabel parameter callback menulis `productDetail` (singular), sedangkan contoh cURL pada halaman menggunakan `productDetails` (plural). Jangan menjadikan field ini sebagai syarat inti callback sebelum format aktual dikonfirmasi.
 2. Contoh kode menggunakan variabel `$apiKey`, sedangkan deskripsi formula menyebut `merchantKey`. Requirement menganggap keduanya merujuk pada credential API Key/Merchant Key milik proyek Duitku; nama secret internal harus konsisten dan tidak mengubah formula.
 3. Formula signature tidak memasukkan `reference` ke string yang ditandatangani. Karena itu backend tetap harus mencocokkan reference terhadap data invoice tersimpan secara independen.
-4. Dokumentasi menyebut maksimum lima kali pengiriman ulang, tetapi tidak menetapkan interval retry pada bagian yang diperiksa.
+4. Dokumentasi menyebut maksimum lima kali pengiriman ulang, tetapi tidak menetapkan interval retry pada bagian yang diperiksa.\n5. Terdapat konflik result code HTTP Callback: tabel Parameter menyebut 01 = Failed, sedangkan Errors → API Response menyebut 02 = Failed. Kode gagal belum boleh dipetakan final sebelum klarifikasi.
 
 ---
 
@@ -362,7 +362,79 @@ Status dari JS callback atau redirect tidak boleh dipakai untuk menyelesaikan pe
 
 ---
 
-## 4. Sumber tahap 1
+
+
+## 4. Expiry dan Status Transaksi — LOCKED (open clarification)
+
+### 4.1 expiryPeriod pada dokumentasi POP
+
+Dokumentasi POP menyatakan:
+- `expiryPeriod` merupakan parameter opsional pada Create Invoice.
+- Tipe parameter: integer.
+- Satuan: menit.
+- Contoh nilai yang ditampilkan: 5, 10, atau 60 menit.
+
+Batas penting:
+- Bagian POP yang diperiksa tidak menetapkan nilai default secara rinci.
+- Bagian POP yang diperiksa tidak menetapkan nilai maksimum yang berlaku umum.
+- Jangan menganggap nilai 1.440 menit (24 jam) didukung untuk semua metode pembayaran.
+- Jangan mengambil tabel default/maksimum expiry dari dokumentasi Duitku API umum sebagai kontrak POP.
+
+### 4.2 Pemisahan expiry provider dan deadline bisnis
+
+Aturan bisnis aplikasi Asri menetapkan tenggat pembayaran 24 jam. Aturan bisnis ini harus dipisahkan dari expiry invoice yang diterima dan diterapkan provider.
+
+Requirement:
+1. Simpan deadline bisnis order secara independen dari parameter expiry provider.
+2. Jangan menyatakan invoice provider kedaluwarsa hanya karena deadline lokal tercapai, kecuali perilaku provider untuk metode pembayaran tersebut sudah dikonfirmasi.
+3. Sebelum mengirim `expiryPeriod = 1440`, konfirmasi dukungan untuk metode pembayaran yang digunakan melalui dokumentasi POP yang lebih spesifik, merchant support, atau pengujian Sandbox yang disetujui.
+4. Jangan mengasumsikan default atau maksimum per payment method dari dokumentasi produk Duitku lain.
+5. Jika provider expiry tidak dapat disamakan dengan deadline bisnis, definisikan penanganan lokal secara eksplisit tanpa mengklaim bahwa invoice provider sudah expired.
+
+**Open clarification:** Dukungan expiry 24 jam untuk metode pembayaran yang akan dipakai Asri belum terverifikasi dari bagian dokumentasi POP yang diperiksa.
+
+### 4.3 Konteks resultCode yang didokumentasikan
+
+Kode hasil tidak boleh dipetakan tanpa memperhatikan konteks asalnya.
+
+| Konteks | Kode | Arti pada dokumentasi |
+|---|---:|---|
+| HTTP Callback — tabel Parameter | `00` | Success |
+| HTTP Callback — tabel Parameter | `01` | Failed |
+| HTTP Callback — bagian Errors / API Response | `00` | Success |
+| HTTP Callback — bagian Errors / API Response | `02` | Failed |
+| JS Callback event | `00` | Success event |
+| JS Callback event | `01` | Pending event |
+| JS Callback event | `02` | Close event |
+| Return Redirect | `00` | Success |
+| Return Redirect | `01` | Process / belum terbayar |
+| Return Redirect | `02` | Canceled / Failed |
+
+### 4.4 Konflik status callback — wajib diklarifikasi
+
+Dokumentasi POP pada halaman yang sama tidak konsisten:
+- Tabel parameter HTTP Callback menyatakan `01 = Failed`.
+- Bagian Errors → API Response → Callback menyatakan `02 = Failed`.
+
+Requirement:
+- `00` dicatat sebagai kode sukses yang konsisten pada kedua bagian callback.
+- Kode gagal callback belum boleh dipetakan final ke `01` atau `02` sebelum klarifikasi resmi atau pengujian Sandbox yang dapat dipertanggungjawabkan.
+- Jangan memakai tabel JS Callback atau Redirect untuk menyelesaikan konflik kode HTTP Callback.
+- Implementasi harus menolak asumsi bahwa kode selain `00` otomatis memiliki arti gagal yang sama di semua konteks.
+- Simpan raw result code dan konteks callback secara aman untuk audit; jangan mengubahnya menjadi status bisnis yang tidak didukung bukti.
+
+### 4.5 Status inquiry / reconciliation
+
+Pada bagian Integrasi Backend POP yang diperiksa, dokumentasi menjelaskan Create Invoice dan HTTP Callback; endpoint inquiry/status-check tidak ditemukan pada bagian tersebut.
+
+Requirement:
+- Jangan mengarang endpoint inquiry, request signature, atau response status.
+- Jika rekonsiliasi status tambahan diperlukan, verifikasi dulu apakah ada mekanisme resmi yang berlaku untuk produk POP dan merchant terkait.
+- Sampai mekanisme tersebut terverifikasi, rekonsiliasi harus diperlakukan sebagai kebutuhan desain yang belum memiliki kontrak provider terkonfirmasi.
+
+---
+
+## 5. Sumber tahap 1
 
 Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/id/), bagian:
 - Integrasi Backend atau Server → Create Invoice
@@ -377,7 +449,7 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 5. Change control
+## 6. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
