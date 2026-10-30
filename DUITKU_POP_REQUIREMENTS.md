@@ -13,10 +13,10 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 | Tahap | Bagian dokumentasi | Status |
 |---:|---|---|
 | 1 | Create Invoice dan Obyek JSON | LOCKED |
-| 2 | HTTP Callback | LOCKED |
+| 2 | HTTP Callback | LOCKED (klarifikasi resultCode diterima; pemetaan gagal masih perlu diperjelas) |
 | 3 | JS Callback dan Return URL | LOCKED |
-| 4 | Expiry dan status transaksi | LOCKED (open clarification) |
-| 5 | Payment Method dan fitur khusus | LOCKED (availability merchant perlu konfirmasi) |
+| 4 | Expiry dan status transaksi | LOCKED (expiry masih open clarification; resultCode mendapat klarifikasi parsial) |
+| 5 | Payment Method dan fitur khusus | LOCKED (availability merchant perlu konfirmasi; QRIS Gudang Voucher pending) |
 | 6 | Errors dan rekonsiliasi | LOCKED (inquiry belum terverifikasi) |
 
 ---
@@ -117,6 +117,8 @@ Address mendokumentasikan field:
 - `countryCode`
 
 Field-field nested tersebut dinyatakan opsional pada tabel dokumentasi. `merchantCustomerId` menjadi wajib untuk skenario tokenisasi sesuai ketentuan khusus di bawah.
+
+**Klarifikasi merchant dari Duitku:** format nilai `countryCode` yang digunakan adalah literal `ID`. Gunakan `ID` ketika mengisi field ini; jangan menggantinya dengan `IDN` atau kode telepon `+62`. Klarifikasi ini dicatat dari informasi tertulis Duitku yang disampaikan untuk requirement proyek.
 
 ### 1.6 Tokenisasi kartu
 
@@ -282,7 +284,8 @@ IP allowlist dapat dipertimbangkan sebagai defense-in-depth jika sesuai dengan i
 1. Tabel parameter callback menulis `productDetail` (singular), sedangkan contoh cURL pada halaman menggunakan `productDetails` (plural). Jangan menjadikan field ini sebagai syarat inti callback sebelum format aktual dikonfirmasi.
 2. Contoh kode menggunakan variabel `$apiKey`, sedangkan deskripsi formula menyebut `merchantKey`. Requirement menganggap keduanya merujuk pada credential API Key/Merchant Key milik proyek Duitku; nama secret internal harus konsisten dan tidak mengubah formula.
 3. Formula signature tidak memasukkan `reference` ke string yang ditandatangani. Karena itu backend tetap harus mencocokkan reference terhadap data invoice tersimpan secara independen.
-4. Dokumentasi menyebut maksimum lima kali pengiriman ulang, tetapi tidak menetapkan interval retry pada bagian yang diperiksa.\n5. Terdapat konflik result code HTTP Callback: tabel Parameter menyebut 01 = Failed, sedangkan Errors → API Response menyebut 02 = Failed. Kode gagal belum boleh dipetakan final sebelum klarifikasi.
+4. Dokumentasi menyebut maksimum lima kali pengiriman ulang, tetapi tidak menetapkan interval retry pada bagian yang diperiksa.
+5. Terdapat konflik result code HTTP Callback: tabel Parameter menyebut 01 = Failed, sedangkan Errors → API Response menyebut 02 = Failed. Klarifikasi merchant terbaru menyatakan bahwa kode `01` hanya tersedia untuk channel Credit Card (CC), sedangkan untuk channel selain CC, Duitku hanya mengirim response `00` saat transaksi sukses. Klarifikasi ini mempersempit konflik dokumentasi, tetapi belum menjelaskan kode/representasi callback untuk transaksi gagal pada setiap channel. Jangan menetapkan `01` sebagai kode gagal universal atau mengarang kode gagal pengganti.
 
 ---
 
@@ -418,7 +421,8 @@ Dokumentasi POP pada halaman yang sama tidak konsisten:
 
 Requirement:
 - `00` dicatat sebagai kode sukses yang konsisten pada kedua bagian callback.
-- Kode gagal callback belum boleh dipetakan final ke `01` atau `02` sebelum klarifikasi resmi atau pengujian Sandbox yang dapat dipertanggungjawabkan.
+- Klarifikasi merchant yang diterima menyatakan `01` hanya tersedia untuk channel Credit Card (CC). Untuk channel selain CC, response `00` dikirim saat transaksi sukses.
+- Arti `01` khusus CC dan representasi callback untuk transaksi gagal pada masing-masing channel belum dijelaskan secara lengkap. Karena itu, pemetaan gagal final tetap terbuka; jangan menganggap `01` berlaku universal atau otomatis menganggap `02` sebagai kode gagal universal.
 - Jangan memakai tabel JS Callback atau Redirect untuk menyelesaikan konflik kode HTTP Callback.
 - Implementasi harus menolak asumsi bahwa kode selain `00` otomatis memiliki arti gagal yang sama di semua konteks.
 - Simpan raw result code dan konteks callback secara aman untuk audit; jangan mengubahnya menjadi status bisnis yang tidak didukung bukti.
@@ -547,6 +551,7 @@ Requirement:
 - Jangan menyalin kredensial uji ke source code, dokumentasi publik proyek, atau log.
 - Pengujian suatu metode tidak membuktikan semua metode aktif atau berfungsi pada merchant.
 - Catat hasil aktual per channel, environment, tanggal, dan bukti hasil.
+- Klarifikasi akses dari Duitku menyatakan tautan Sandbox dapat diakses dan menyarankan agar pengujian dilakukan tanpa VPN atau jaringan sejenis. Ini adalah keterangan dari Duitku, bukan hasil pengujian aktual oleh proyek. Saat pengujian dilakukan, coba akses tanpa VPN terlebih dahulu dan catat hasilnya.
 
 ### 5.7 Batasan dan hal yang belum diverifikasi
 
@@ -555,6 +560,7 @@ Requirement:
 3. Detail operasional void untuk channel yang menyatakan support void belum diaudit pada tahap ini.
 4. Daftar QRIS issuer merupakan daftar terpisah dan dapat berkembang; tidak otomatis menyatakan semua issuer/channel aktif bagi merchant.
 5. Kode channel yang tercantum adalah katalog dokumentasi saat diperiksa, bukan kontrak bahwa channel pasti tersedia pada production account.
+6. Klarifikasi merchant terbaru menyebut status channel QRIS Gudang Voucher (`GQ`) masih dikoordinasikan dengan tim terkait. Status aktivasi/ketersediaannya untuk merchant Asri tetap **menunggu konfirmasi Duitku**.
 
 ---
 
@@ -649,6 +655,7 @@ Requirement:
 - Jangan gunakan kredensial atau nomor uji sebagai data produksi.
 - Jangan menganggap daftar data uji menjamin merchant telah mengaktifkan channel terkait.
 - Pengujian nyata harus mencatat environment, channel, tanggal, hasil, dan bukti.
+- Klarifikasi akses dari Duitku menyatakan tautan Sandbox dapat diakses dan menyarankan pengujian tanpa VPN atau jaringan sejenis; belum ada hasil uji akses aktual yang dicatat dalam dokumen ini.
 - Tidak ada transaksi Sandbox/Production yang dijalankan dalam audit dokumentasi ini.
 
 ### 6.6 Status akhir bagian errors/reconciliation
@@ -681,7 +688,20 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 8. Change control
+## 8. Klarifikasi merchant Duitku — 2026-10-31
+
+Bagian ini mencatat klarifikasi tertulis dari Duitku yang disampaikan untuk proyek. Klarifikasi merchant melengkapi dokumentasi POP, tetapi tidak menghapus ketentuan keamanan callback atau menggantikan pengujian Sandbox.
+
+| Topik | Klarifikasi Duitku | Dampak requirement | Status |
+|---|---|---|---|
+| Callback `resultCode` | Kode `01` hanya tersedia untuk channel Credit Card (CC). Untuk channel selain CC, response `00` dikirim saat transaksi sukses. | Jangan gunakan `01` sebagai kode gagal universal. Arti `01` pada CC dan callback transaksi gagal untuk tiap channel masih perlu diperjelas. | Klarifikasi parsial; pemetaan gagal belum final |
+| `countryCode` | Format yang digunakan adalah `ID`. | Gunakan literal `ID` pada field `countryCode`. | Terkonfirmasi |
+| Tautan Sandbox | Duitku menyatakan tautan Sandbox dapat diakses dan menyarankan tidak menggunakan VPN atau jaringan sejenis. | Uji akses tanpa VPN terlebih dahulu. Pernyataan ini tidak membuktikan akses dari lingkungan proyek sudah berhasil. | Klarifikasi diterima; uji aktual belum dilakukan |
+| QRIS Gudang Voucher (`GQ`) | Masih dikoordinasikan dengan tim terkait dan informasi akan disampaikan kemudian. | Jangan menyatakan channel aktif/tersedia sebelum ada konfirmasi lanjutan. | Menunggu konfirmasi Duitku |
+
+---
+
+## 9. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
