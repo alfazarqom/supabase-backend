@@ -14,7 +14,7 @@ Dokumen requirement terverifikasi untuk integrasi Duitku POP pada backend Supaba
 |---:|---|---|
 | 1 | Create Invoice dan Obyek JSON | LOCKED |
 | 2 | HTTP Callback | LOCKED |
-| 3 | JS Callback dan Return URL | PENDING |
+| 3 | JS Callback dan Return URL | LOCKED |
 | 4 | Expiry dan status transaksi | PENDING |
 | 5 | Payment Method dan fitur khusus | PENDING |
 | 6 | Errors dan rekonsiliasi | PENDING |
@@ -286,7 +286,83 @@ IP allowlist dapat dipertimbangkan sebagai defense-in-depth jika sesuai dengan i
 
 ---
 
-## 3. Sumber tahap 1
+
+
+## 3. JS Callback dan Return URL — LOCKED
+
+### 3.1 Dua metode menampilkan halaman pembayaran
+
+Dokumentasi POP menyediakan dua metode frontend:
+
+**A. Duitku JS / Popup**
+- Sertakan library sesuai environment:
+  - Production: `https://app-prod.duitku.com/lib/js/duitku.js`
+  - Sandbox: `https://app-sandbox.duitku.com/lib/js/duitku.js`
+- Mulai pembayaran dengan `checkout.process(duitkuReference, options)`.
+- `duitkuReference` berasal dari hasil Create Invoice backend.
+- Event opsional yang didokumentasikan: `successEvent`, `pendingEvent`, `errorEvent`, dan `closeEvent`.
+- Opsi `defaultLanguage` mendukung `id` dan `en`.
+- Opsi `currency` hanya estimasi konversi; pembayaran tetap dilakukan dalam IDR dan rate dapat berubah.
+
+**B. Window Redirection**
+- Alternatif terhadap Duitku JS.
+- Gunakan `paymentUrl` yang diterima dari response Create Invoice.
+- Browser diarahkan ke halaman pembayaran Duitku.
+- Dokumentasi menyebut opsi query `lang=id` atau `lang=en`.
+- Opsi `currency=USD` atau `currency=EUR` hanya estimasi; pembayaran tetap IDR.
+
+Pemilihan metode frontend harus menjadi keputusan integrasi yang eksplisit. Jangan menganggap kedua metode harus digunakan sekaligus atau mengganti metode yang sudah dipilih tanpa persetujuan.
+
+### 3.2 JS callback — bukan bukti pembayaran
+
+Objek JS callback yang didokumentasikan memuat:
+
+| Field | Tipe |
+|---|---|
+| `resultCode` | String |
+| `merchantOrderId` | String |
+| `reference` | String |
+
+Event UI yang didokumentasikan:
+- `successEvent`: callback UI untuk hasil sukses (contoh result code 00).
+- `pendingEvent`: callback UI untuk status pending (contoh result code 01).
+- `errorEvent`: callback UI untuk error.
+- `closeEvent`: callback UI ketika pelanggan menutup popup tanpa menyelesaikan pembayaran (contoh result code 02).
+
+**Ketentuan keamanan yang eksplisit dari Duitku:**
+- Response JS callback hanya boleh digunakan untuk notifikasi/informasi kepada pelanggan.
+- JS callback tidak diperkenankan mengubah status pembayaran pada sistem merchant.
+- Perubahan status transaksi harus menggunakan HTTP Callback.
+
+Backend dan frontend tidak boleh menganggap event `successEvent`, `pendingEvent`, `errorEvent`, atau `closeEvent` sebagai otorisasi untuk mengubah status pembayaran, stok, atau fulfillment.
+
+### 3.3 Return URL / Redirect
+
+Setelah transaksi dibuat, Duitku mengarahkan pelanggan ke `returnUrl` setelah pembayaran atau ketika pelanggan menggunakan tombol kembali.
+
+Dokumentasi memberikan contoh parameter GET:
+- `merchantOrderId`
+- `resultCode`
+- `reference`
+
+Ketentuan:
+- Return URL merupakan landing page untuk navigasi dan penyampaian informasi kepada pelanggan.
+- Dokumentasi secara eksplisit melarang penggunaan `resultCode` redirect untuk memperbarui status pembayaran.
+- URL dan query parameter dapat diubah secara manual oleh pelanggan.
+- Halaman return harus meminta status terkini dari backend berdasarkan order yang sah; status otoritatif berasal dari pemrosesan HTTP Callback, bukan query string browser.
+
+### 3.4 Pemisahan status dan konteks resultCode
+
+Jangan menyamakan result code antar mekanisme:
+- JS callback: event UI success/pending/close menggunakan contoh kode 00/01/02.
+- Redirect: tabel error mendefinisikan 00 = Success, 01 = Process, 02 = Canceled/Failed.
+- HTTP callback: dokumentasi memiliki perbedaan definisi kode gagal antara tabel parameter callback dan tabel API response; dicatat sebagai open clarification pada bagian HTTP Callback.
+
+Status dari JS callback atau redirect tidak boleh dipakai untuk menyelesaikan perbedaan tersebut dan tidak boleh menjadi dasar mutasi pembayaran.
+
+---
+
+## 4. Sumber tahap 1
 
 Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/id/), bagian:
 - Integrasi Backend atau Server → Create Invoice
@@ -301,7 +377,7 @@ Dibaca langsung dari [Duitku POP Bahasa Indonesia](https://docs.duitku.com/pop/i
 
 Referensi halaman: https://docs.duitku.com/pop/id/
 
-## 4. Change control
+## 5. Change control
 
 - Requirement yang berstatus LOCKED adalah kontrak acuan untuk audit dan desain berikutnya, bukan izin otomatis untuk implementasi.
 - Jangan mengubah schema database, RLS, grants, Edge Functions, secrets, atau deployment berdasarkan dokumen ini tanpa persetujuan ruang lingkup implementasi yang eksplisit.
