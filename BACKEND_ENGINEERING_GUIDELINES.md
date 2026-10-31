@@ -58,25 +58,26 @@ Seluruh keputusan integrasi harus berdasarkan informasi yang dapat diverifikasi 
 - Jika informasi belum ditemukan, nyatakan secara eksplisit bahwa informasi tersebut **Belum terverifikasi**.
 - Bedakan antara ketentuan resmi Duitku dan keputusan desain internal backend.
 
-### B. Aturan Supabase dan prefix alf
+### B. Aturan Supabase dan prefix apps
 
-Seluruh resource Supabase yang dibuat atau digunakan dalam pengembangan ini wajib mengikuti aturan prefix berikut.
+Seluruh tabel database dan Supabase Edge Functions yang digunakan oleh aplikasi ini **wajib** menggunakan prefix `apps`. Resource tanpa prefix tersebut tidak boleh dibuat, dipanggil, dijadikan dependensi, atau digunakan dalam implementasi.
 
-| Resource | Prefix | Contoh |
-|---|---|---|
-| Database tables | `alf_` | `alf_transactions` |
-| Edge Functions | `alf-` | `alf-create-payment` |
+| Resource | Prefix wajib | Contoh valid | Contoh dilarang |
+|---|---|---|---|
+| Database tables | `apps_` | `apps_products`, `apps_orders`, `apps_order_items` | `products`, `orders`, `order_items` |
+| Supabase Edge Functions | `apps-` | `apps-get-products`, `apps-create-order` | `get-products`, `create-order` |
 
-Ketentuan:
+Ketentuan wajib:
 
-1. Semua tabel baru wajib menggunakan prefix `alf_`.
-2. Semua Edge Function baru wajib menggunakan prefix `alf-`.
-3. Jika resource yang dibutuhkan belum tersedia, buat resource baru setelah kebutuhan dan desainnya dipastikan.
-4. Jika resource sudah tersedia, periksa dan gunakan resource yang ada.
-5. Jangan membuat duplikasi tabel atau Edge Function.
-6. Jangan mengubah atau menghapus resource yang sudah ada tanpa alasan teknis yang jelas dan konfirmasi jika perubahan berisiko.
-7. Terapkan aturan prefix secara konsisten pada seluruh implementasi.
-8. Aturan prefix berlaku untuk resource baru yang dibuat dalam ruang lingkup pengembangan ini; jangan mengganti nama resource lama secara otomatis hanya untuk menyesuaikan prefix.
+1. Setiap tabel yang dibuat atau digunakan harus memiliki nama dengan prefix `apps_`.
+2. Setiap Supabase Edge Function yang dibuat atau dipanggil harus memiliki nama dengan prefix `apps-`.
+3. Dilarang menggunakan tabel atau Edge Function tanpa prefix yang diwajibkan, termasuk resource lama yang masih tersedia.
+4. Semua query, relasi, foreign key, migration, konfigurasi, pemanggilan API/function, source code, dan dokumentasi harus merujuk pada nama resource ber-prefix `apps`.
+5. Sebelum implementasi, inventarisasi resource yang sudah ada dan verifikasi nama aktualnya. Jangan mengasumsikan resource ber-prefix sudah tersedia.
+6. Jika kebutuhan hanya tersedia pada resource tanpa prefix, jangan gunakan resource tersebut. Hentikan bagian implementasi yang bergantung padanya dan ajukan rencana migrasi atau pembuatan resource ber-prefix untuk persetujuan.
+7. Jangan otomatis mengganti nama, menghapus, atau memigrasikan resource lama. Perubahan database yang berisiko memerlukan audit dampak dan persetujuan eksplisit terlebih dahulu.
+8. Jangan membuat duplikasi resource ber-prefix yang sudah tersedia; periksa schema, definisi, relasi, dan perilakunya sebelum membuat resource baru.
+9. Aturan ini berlaku untuk seluruh pengembangan dan integrasi aplikasi pada repository ini, bukan hanya fitur Duitku.
 
 ### C. Aturan pengembangan database
 
@@ -91,7 +92,7 @@ Ketentuan:
 
 ### D. Aturan pengembangan Edge Functions
 
-- Semua Edge Functions baru wajib menggunakan prefix `alf-`.
+- Semua Edge Functions baru wajib menggunakan prefix `apps-`.
 - Setiap function harus memiliki tanggung jawab yang jelas.
 - Validasi seluruh input dari client.
 - Lindungi credential dan secret di server-side.
@@ -174,7 +175,7 @@ Setiap hasil pengembangan harus disajikan dalam Markdown dan mencakup bagian yan
 2. **Official Documentation First:** Dokumentasi resmi Duitku POP menjadi acuan integrasi.
 3. **No Unnecessary Implementation:** Jangan membuat resource atau fitur tanpa kebutuhan.
 4. **Inspect Before Create:** Periksa resource Supabase sebelum membuat yang baru.
-5. **Consistent Prefix:** Gunakan `alf_` untuk tabel baru dan `alf-` untuk Edge Functions baru.
+5. **Consistent Prefix:** Gunakan `apps_` untuk tabel baru dan `apps-` untuk Edge Functions baru.
 6. **Security First:** Credential dan validasi transaksi harus ditangani di backend.
 7. **Traceable Implementation:** Setiap implementasi harus memiliki dasar teknis yang jelas.
 8. **Markdown Only:** Seluruh hasil diskusi dan implementasi menggunakan Markdown.
